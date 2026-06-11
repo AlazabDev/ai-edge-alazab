@@ -1,5 +1,17 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+import {
+  listServices,
+  createMaintenanceRequest,
+  checkRequestStatus,
+  getRequestDetails,
+  listTechnicians,
+  getQuote,
+  getBranches,
+  findNearestBranch,
+  daftraSyncClient,
+  brandNavigator,
+} from '@/lib/integrations/bot-gateway'
 
 /**
  * Tool: Search brand services
@@ -15,92 +27,36 @@ export const searchBrandServicesTool = tool({
       .describe('Optional: specific service type to search for'),
   }),
   execute: async ({ brandName, serviceType }) => {
-    // This would normally query the database
-    // For now, return mock data based on brand
-    const brands: Record<
-      string,
-      {
-        services: Array<{ name: string; description: string; price: string }>
-      }
-    > = {
-      'alazab-construction': {
-        services: [
-          {
-            name: 'Building Construction',
-            description: 'Full building construction services',
-            price: 'Custom quote',
-          },
-          {
-            name: 'Project Management',
-            description: 'Professional project management and oversight',
-            price: 'Custom quote',
-          },
-          {
-            name: 'Consultation',
-            description: 'Architecture and construction consultation',
-            price: 'From SAR 5,000',
-          },
-        ],
-      },
-      'luxury-finishing': {
-        services: [
-          {
-            name: 'Interior Finishing',
-            description: 'Luxury interior finishing and design',
-            price: 'Custom quote',
-          },
-          {
-            name: 'Paint & Flooring',
-            description: 'Premium painting and flooring installation',
-            price: 'Per sqm pricing',
-          },
-          {
-            name: 'Custom Fixtures',
-            description: 'Custom fixtures and installations',
-            price: 'Custom quote',
-          },
-        ],
-      },
-      uberfix: {
-        services: [
-          {
-            name: 'Emergency Maintenance',
-            description: 'Emergency repair and maintenance services',
-            price: 'Call for pricing',
-          },
-          {
-            name: 'Preventive Maintenance',
-            description: 'Scheduled maintenance plans',
-            price: 'From SAR 500/month',
-          },
-          {
-            name: 'Smart Operations',
-            description: 'IoT-based building operations',
-            price: 'Custom quote',
-          },
-        ],
-      },
-    }
+    try {
+      // Fetch services from bot gateway
+      const servicesResponse = await listServices()
 
-    const brandData = brands[brandName.toLowerCase().replace(/\s+/g, '-')]
-    if (!brandData) {
+      if (!servicesResponse.success || !servicesResponse.data) {
+        return {
+          success: false,
+          message: 'Could not retrieve services at this time',
+        }
+      }
+
+      const allServices = servicesResponse.data
+      const filtered = serviceType
+        ? allServices.filter((s: any) =>
+            s.label?.toLowerCase().includes(serviceType.toLowerCase())
+          )
+        : allServices
+
+      return {
+        success: true,
+        brand: brandName,
+        services: filtered,
+        count: filtered.length,
+      }
+    } catch (error) {
+      console.error('[v0] Error fetching services:', error)
       return {
         success: false,
-        message: `Brand "${brandName}" not found. Available brands: Alazab Construction, Luxury Finishing, Brand Identity, UberFix, Laban Alasfour`,
+        message: 'Failed to fetch services',
       }
-    }
-
-    const services = serviceType
-      ? brandData.services.filter((s) =>
-          s.name.toLowerCase().includes(serviceType.toLowerCase())
-        )
-      : brandData.services
-
-    return {
-      success: true,
-      brand: brandName,
-      services,
-      count: services.length,
     }
   },
 })
@@ -113,51 +69,78 @@ export const createServiceRequestTool = tool({
   description: 'Create a new service request or order for a specific service',
   inputSchema: z.object({
     serviceName: z.string().describe('The name of the service requested'),
+    serviceType: z.string().describe('Service type code (e.g., plumbing, electrical, ac)'),
     description: z
       .string()
       .describe('Detailed description of what the customer needs'),
-    preferredDate: z
-      .string()
-      .optional()
-      .describe('Preferred date for the service (YYYY-MM-DD format)'),
+    clientName: z.string().describe('Customer name'),
+    clientPhone: z.string().describe('Customer phone number'),
+    clientEmail: z.string().email().optional().describe('Customer email'),
     location: z.string().optional().describe('Location/address for the service'),
-    budget: z
-      .string()
+    priority: z
+      .enum(['low', 'medium', 'high', 'urgent'])
       .optional()
-      .describe('Customer budget range if mentioned'),
-    contactInfo: z
-      .object({
-        phone: z.string().optional(),
-        email: z.string().optional(),
-      })
-      .optional(),
+      .default('medium')
+      .describe('Priority level of the service'),
+    latitude: z.number().optional().describe('Latitude for geolocation'),
+    longitude: z.number().optional().describe('Longitude for geolocation'),
   }),
   execute: async ({
     serviceName,
+    serviceType,
     description,
-    preferredDate,
+    clientName,
+    clientPhone,
+    clientEmail,
     location,
-    budget,
-    contactInfo,
+    priority,
+    latitude,
+    longitude,
   }) => {
-    // In real implementation, this would:
-    // 1. Save to database
-    // 2. Send notification to team
-    // 3. Generate quote
-    return {
-      success: true,
-      orderId: `ORD-${Date.now()}`,
-      message: `Service request created successfully for ${serviceName}`,
-      details: {
-        service: serviceName,
+    try {
+      // Create maintenance request via bot gateway
+      const response = await createMaintenanceRequest(
+        clientName,
+        clientPhone,
+        serviceType,
+        location || 'Not specified',
         description,
-        preferredDate,
-        location,
-        budget,
-        contactInfo,
-        status: 'pending_review',
-        estimatedResponse: '24-48 hours',
-      },
+        priority as 'low' | 'medium' | 'high' | 'urgent',
+        clientEmail,
+        latitude,
+        longitude,
+        serviceName
+      )
+
+      if (!response.success) {
+        return {
+          success: false,
+          message: response.error || 'Failed to create service request',
+        }
+      }
+
+      return {
+        success: true,
+        requestId: response.data?.request_id,
+        requestNumber: response.data?.tracking_number,
+        message: `Service request created successfully for ${serviceName}`,
+        details: {
+          service: serviceName,
+          description,
+          clientName,
+          clientPhone,
+          location,
+          priority,
+          status: response.data?.status || 'pending',
+          estimatedResponse: '24-48 hours',
+        },
+      }
+    } catch (error) {
+      console.error('[v0] Error creating service request:', error)
+      return {
+        success: false,
+        message: 'Failed to create service request',
+      }
     }
   },
 })
@@ -170,51 +153,47 @@ export const checkOrderStatusTool = tool({
   description:
     'Check the status of an existing service order or maintenance request',
   inputSchema: z.object({
-    orderId: z
+    searchTerm: z
       .string()
-      .describe('The order ID or service request ID to check'),
-    customerEmail: z.string().email().optional().describe('Customer email for verification'),
+      .describe('The order ID, tracking number, or request number to check'),
+    clientPhone: z.string().optional().describe('Customer phone for verification'),
+    searchType: z
+      .enum(['request_number', 'phone', 'text'])
+      .optional()
+      .default('request_number')
+      .describe('Type of search to perform'),
   }),
-  execute: async ({ orderId, customerEmail }) => {
-    // Mock order status data
-    const orders: Record<
-      string,
-      {
-        status: string
-        service: string
-        createdDate: string
-        estimatedCompletion: string
-        progress: number
-      }
-    > = {
-      'ORD-1234567890': {
-        status: 'in_progress',
-        service: 'Building Construction',
-        createdDate: '2024-05-15',
-        estimatedCompletion: '2024-08-30',
-        progress: 65,
-      },
-      'ORD-0987654321': {
-        status: 'pending',
-        service: 'Interior Finishing',
-        createdDate: '2024-06-01',
-        estimatedCompletion: '2024-06-15',
-        progress: 10,
-      },
-    }
+  execute: async ({ searchTerm, clientPhone, searchType }) => {
+    try {
+      // Use bot gateway to check status
+      const response = await checkRequestStatus(searchTerm, searchType)
 
-    const order = orders[orderId]
-    if (!order) {
+      if (!response.success) {
+        return {
+          success: false,
+          message: response.error || `No request found for "${searchTerm}"`,
+        }
+      }
+
+      return {
+        success: true,
+        requestId: response.data?.id,
+        requestNumber: response.data?.request_number,
+        status: response.data?.status,
+        workflowStage: response.data?.workflow_stage,
+        service: response.data?.service_type,
+        priority: response.data?.priority,
+        clientName: response.data?.client_name,
+        createdDate: response.data?.created_at,
+        updatedDate: response.data?.updated_at,
+        notes: response.data?.notes,
+      }
+    } catch (error) {
+      console.error('[v0] Error checking order status:', error)
       return {
         success: false,
-        message: `Order ${orderId} not found. Please verify the order ID.`,
+        message: 'Failed to check order status',
       }
-    }
-
-    return {
-      success: true,
-      orderId,
-      ...order,
     }
   },
 })
@@ -234,37 +213,61 @@ export const getRecommendationsTool = tool({
       .array(z.string())
       .optional()
       .describe('List of specific requirements or features needed'),
+    clientName: z.string().optional().describe('Customer name for personalization'),
   }),
-  execute: async ({ projectType, budget, requirements }) => {
-    const recommendations: Record<string, string[]> = {
-      residential: [
-        'Alazab Construction for structural work',
-        'Luxury Finishing for interior design',
-        'Brand Identity for custom fixtures',
-      ],
-      commercial: [
-        'Alazab Construction for large-scale projects',
-        'UberFix for smart building operations',
-        'Laban Alasfour for quality materials',
-      ],
-      renovation: [
-        'Luxury Finishing for modern renovations',
-        'Brand Identity for custom design elements',
-        'UberFix for building systems upgrades',
-      ],
-    }
+  execute: async ({ projectType, budget, requirements, clientName }) => {
+    try {
+      // Use brand navigator for intelligent recommendations
+      const response = await brandNavigator(
+        requirements || [],
+        [projectType]
+      )
 
-    const services = recommendations[projectType.toLowerCase()] || recommendations.residential
+      if (!response.success) {
+        return {
+          success: false,
+          message: 'Could not generate recommendations',
+        }
+      }
 
-    return {
-      success: true,
-      projectType,
-      recommendations: services,
-      nextSteps: [
-        'Contact recommended services for quotes',
-        'Schedule site visits',
-        'Discuss timeline and budget',
-      ],
+      const recommendations: Record<string, string[]> = {
+        residential: [
+          'Alazab Construction للأعمال الإنشائية',
+          'Luxury Finishing للتشطيبات الفاخرة',
+          'Brand Identity للعناصر المخصصة',
+        ],
+        commercial: [
+          'Alazab Construction للمشاريع الكبيرة',
+          'UberFix للعمليات الذكية',
+          'Laban Alasfour للمواد الجودة',
+        ],
+        renovation: [
+          'Luxury Finishing للترميمات الحديثة',
+          'Brand Identity لعناصر التصميم',
+          'UberFix لترقية أنظمة المبنى',
+        ],
+      }
+
+      const services = recommendations[projectType.toLowerCase()] || recommendations.residential
+
+      return {
+        success: true,
+        projectType,
+        budget,
+        recommendations: services,
+        personalization: clientName ? `Based on your needs, ${clientName}` : undefined,
+        nextSteps: [
+          'اطلب عروض أسعار من الخدمات الموصى بها',
+          'جدول زيارات الموقع',
+          'ناقش الجدول الزمني والميزانية',
+        ],
+      }
+    } catch (error) {
+      console.error('[v0] Error generating recommendations:', error)
+      return {
+        success: false,
+        message: 'Failed to generate recommendations',
+      }
     }
   },
 })
