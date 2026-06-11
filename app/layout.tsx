@@ -6,8 +6,8 @@ import { VercelToolbar } from "@vercel/toolbar/next";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Dynamic Models - Vercel AI SDK",
-  description: "Next.js chatbot with dynamic model selection powered by the Vercel AI SDK, Feature Flags and Edge Config.",
+  title: "مجموعة العزب - The Alazab Group",
+  description: "AI-powered customer service bot for Alazab Construction, Luxury Finishing, Brand Identity, UberFix, and Laban Alasfour. Available on Web, WhatsApp, and Telegram.",
 };
 
 export default function RootLayout({

@@ -10,21 +10,27 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.10",
+    "@ai-sdk/react": "^3.0.203",
     "@radix-ui/react-avatar": "^1.1.0",
     "@radix-ui/react-slot": "^1.1.0",
     "@vercel/edge-config": "^1.2.1",
     "@vercel/flags": "^2.6.0",
     "@vercel/toolbar": "^0.1.15",
     "ai": "^4.0.21",
+    "better-auth": "^1.6.16",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.2",
     "lucide-react": "^0.427.0",
+    "nanoid": "^5.1.11",
     "next": "14.2.5",
+    "pg": "^8.21.0",
     "react": "^18",
     "react-dom": "^18",
     "streamdown": "^1.6.7",
     "tailwind-merge": "^2.5.2",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20",
