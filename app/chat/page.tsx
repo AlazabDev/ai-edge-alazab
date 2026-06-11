@@ -4,8 +4,8 @@ import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { getUser } from '@/app/actions/auth'
-import { createConversation } from '@/app/actions/data'
+import { getSession } from '@/app/actions/auth'
+import { createConversation, getBrands } from '@/app/actions/data'
 
 interface User {
   id: string
@@ -13,30 +13,42 @@ interface User {
   name: string
 }
 
+interface Brand {
+  id: string
+  name: string
+  slug: string
+}
+
 export default function ChatPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [conversationId, setConversationId] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
+  const [brands, setBrands] = useState<Brand[]>([])
 
   useEffect(() => {
     const initializeChat = async () => {
       try {
-        const currentUser = await getUser()
-        if (!currentUser) {
+        const session = await getSession()
+        if (!session?.user) {
           router.push('/sign-in')
           return
         }
 
-        setUser(currentUser as User)
+        setUser(session.user as User)
 
-        // Create a new conversation
-        const conversation = await createConversation('alazab-construction', 'web')
+        // Get brands
+        const allBrands = await getBrands()
+        setBrands(allBrands as Brand[])
+
+        // Create a new conversation with first brand
+        const defaultBrand = allBrands[0]?.id || 'brand_alazab_1'
+        const conversation = await createConversation(defaultBrand, 'web')
         setConversationId(conversation.id)
         setIsLoading(false)
       } catch (error) {
         console.error('[v0] Error initializing chat:', error)
-        router.push('/sign-in')
+        setIsLoading(false)
       }
     }
 
