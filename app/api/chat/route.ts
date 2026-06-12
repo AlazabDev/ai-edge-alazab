@@ -1,17 +1,34 @@
-import { convertToCoreMessages, streamText } from 'ai';
-import { registry } from '@/lib/ai-config';
-import { modelId } from '@/flags';
+import { streamText } from 'ai'
+import { openai } from '@ai-sdk/openai'
 
-export const maxDuration = 30;
+export const maxDuration = 60
 
 export async function POST(req: Request) {
-  const { messages } = await req.json();
-  const model = await modelId() as string;
+  try {
+    const { messages } = await req.json()
 
-  const result = streamText({
-    model: registry.languageModel(model),
-    messages: convertToCoreMessages(messages),
-  });
+    if (!messages || !Array.isArray(messages)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid messages format' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
 
-  return result.toDataStreamResponse();
+    // Simple streaming response
+    const result = streamText({
+      model: openai('gpt-4o-mini'),
+      system: 'أنت مساعد ذكي لخدمة عملاء مجموعة العزب. تقدم معلومات عن الخدمات بكفاءة واحترافية.',
+      messages: messages,
+    })
+
+    return result.toTextStreamResponse()
+  } catch (error) {
+    console.error('[v0] Chat API error:', error)
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : 'Internal server error',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
 }
